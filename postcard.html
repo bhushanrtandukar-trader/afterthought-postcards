@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://*.supabase.co; media-src https://*.supabase.co; img-src data:">
+<meta name="robots" content="noindex">
+<title>A voice postcard</title>
+<style>
+  :root { --bg:#0d0f16; --text:#f4efe7; --muted:#a9a59e; --gold:#e0b27a; --line:rgba(255,255,255,.14); }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; color:var(--text); background:radial-gradient(900px 600px at 15% 0%, #3a3560 0%, transparent 60%), radial-gradient(700px 500px at 95% 100%, rgba(224,178,122,.35) 0%, transparent 60%), var(--bg); font:16px/1.5 Inter, system-ui, sans-serif; }
+  main { width:min(520px,100%); text-align:center; }
+  .eyebrow { letter-spacing:.25em; text-transform:uppercase; font-size:11px; color:var(--gold); font-weight:600; }
+  h1 { font:300 34px/1.2 Georgia, "Times New Roman", serif; margin:.4em 0 .2em; }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  blockquote { font:italic 300 24px/1.4 Georgia, serif; margin:0 0 6px; }
+  .by { color:var(--muted); font-size:14px; margin-bottom:28px; }
+  audio { width:100%; margin:6px 0 22px; }
+  .btn { display:inline-block; border:0; cursor:pointer; text-decoration:none; padding:14px 26px; border-radius:50px; font:600 16px Inter, system-ui, sans-serif; background:var(--gold); color:#1a1208; }
+  .ghost { background:transparent; color:var(--text); border:1px solid var(--line); margin:6px 4px; padding:10px 18px; font-size:14px; font-weight:500; }
+  .small { color:var(--muted); font-size:13px; margin-top:26px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Afterthought</div>
+  <div id="loading"><h1>Opening your postcard…</h1></div>
+  <div id="card" hidden>
+    <h1 id="title"></h1>
+    <p class="sub" id="secs"></p>
+    <blockquote id="quote"></blockquote>
+    <div class="by" id="author"></div>
+    <audio id="player" controls preload="metadata"></audio>
+    <div>
+      <a class="btn" id="open" href="#">Open in Afterthought</a>
+    </div>
+    <div>
+      <a class="btn ghost" id="get" href="#">Get the app</a>
+      <button class="btn ghost" id="report">Report</button>
+    </div>
+    <p class="small">This postcard was recorded by a person and is shared with whoever has this link. It is deleted after 30 days.</p>
+  </div>
+  <div id="gone" hidden>
+    <h1>This postcard isn't here any more</h1>
+    <p class="sub">It may have expired (they last 30 days) or been removed.</p>
+    <a class="btn ghost" id="get2" href="#">Get Afterthought</a>
+  </div>
+</main>
+<script>
+const SUPABASE_URL = "https://rakkpaaoxxfiemokijyo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_5sDwlZiQxRE6hLYEXeaKvg_mxW_Ub1M";   // publishable by design: it can only call the postcard functions
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=app.afterthought";
+
+const $ = (id) => document.getElementById(id);
+const id = (location.hash || "").replace(/^#/, "").trim();
+const headers = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
+
+function gone() { $("loading").hidden = true; $("gone").hidden = false; $("get2").href = PLAY_STORE_URL; }
+
+async function rpc(fn, body) {
+  const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + fn, { method: "POST", headers, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(String(r.status));
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+
+(async () => {
+  if (!SUPABASE_URL || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return gone();
+  try {
+    const p = await rpc("get_postcard", { p_id: id });
+    if (!p) return gone();
+    document.title = p.name + " sent you a voice postcard";
+    $("title").textContent = p.name + " sent you a voice postcard";
+    $("secs").textContent = Math.max(1, Math.round(p.duration_ms / 1000)) + " seconds";
+    if (p.text) { $("quote").textContent = "“" + p.text + "”"; if (p.author) $("author").textContent = "— " + p.author; }
+    $("player").src = SUPABASE_URL + "/storage/v1/object/public/postcards/" + p.path.split("/").map(encodeURIComponent).join("/");
+    $("open").href = "afterthought://postcard/" + id;
+    $("get").href = PLAY_STORE_URL;
+    $("report").onclick = async () => { $("report").disabled = true; try { await rpc("report_postcard", { p_id: id, p_reason: "reported on the web page" }); } catch (e) {} $("report").textContent = "Thank you. We will look at it."; };
+    $("loading").hidden = true; $("card").hidden = false;
+  } catch (e) { gone(); }
+})();
+</script>
+</body>
+</html>
